@@ -5,7 +5,9 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder"
+    "dist": "electron-builder",
+    "postinstall": "node scripts/download-binaries.js",
+    "download-binaries": "node scripts/download-binaries.js"
   },
   "author": "Antigravity",
   "license": "ISC",

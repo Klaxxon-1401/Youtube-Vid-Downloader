@@ -2,10 +2,154 @@ const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const { spawn, execSync, exec } = require('child_process');
 const fs = require('fs');
+const https = require('https');
+const http = require('http');
 
 app.disableHardwareAcceleration();
 
 let mainWindow;
+
+// Binary download configuration
+const BINARIES = {
+    linux: {
+        ffmpeg: {
+            url: 'https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz',
+            type: 'tar.xz',
+            files: ['ffmpeg', 'ffprobe']
+        },
+        phantomjs: {
+            url: 'https://bitbucket.org/ariya/phantomjs/downloads/phantomjs-2.1.1-linux-x86_64.tar.bz2',
+            type: 'tar.bz2',
+            files: ['phantomjs']
+        }
+    },
+    win32: {
+        ffmpeg: {
+            url: 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip',
+            type: 'zip',
+            files: ['ffmpeg.exe', 'ffprobe.exe']
+        },
+        phantomjs: {
+            url: 'https://bitbucket.org/ariya/phantomjs/downloads/phantomjs-2.1.1-windows.zip',
+            type: 'zip',
+            files: ['phantomjs.exe']
+        }
+    }
+};
+
+function getBinDir() {
+    if (app.isPackaged) {
+        return path.join(process.resourcesPath, 'bin');
+    }
+    return path.join(__dirname, 'bin');
+}
+
+function downloadFile(url, destPath) {
+    return new Promise((resolve, reject) => {
+        console.log(`Downloading: ${url}`);
+        const protocol = url.startsWith('https') ? https : http;
+
+        const request = (currentUrl) => {
+            const proto = currentUrl.startsWith('https') ? https : http;
+            proto.get(currentUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (response) => {
+                if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+                    request(response.headers.location);
+                    return;
+                }
+                if (response.statusCode !== 200) {
+                    reject(new Error(`HTTP ${response.statusCode}`));
+                    return;
+                }
+                const file = fs.createWriteStream(destPath);
+                response.pipe(file);
+                file.on('finish', () => { file.close(); resolve(destPath); });
+                file.on('error', reject);
+            }).on('error', reject);
+        };
+        request(url);
+    });
+}
+
+function extractArchive(archivePath, destDir, type) {
+    const isWin = process.platform === 'win32';
+    if (type === 'zip') {
+        if (isWin) {
+            execSync(`powershell -Command "Expand-Archive -Path '${archivePath}' -DestinationPath '${destDir}' -Force"`, { stdio: 'pipe' });
+        } else {
+            execSync(`unzip -o "${archivePath}" -d "${destDir}"`, { stdio: 'pipe' });
+        }
+    } else if (type === 'tar.xz') {
+        execSync(`tar -xJf "${archivePath}" -C "${destDir}"`, { stdio: 'pipe' });
+    } else if (type === 'tar.bz2') {
+        execSync(`tar -xjf "${archivePath}" -C "${destDir}"`, { stdio: 'pipe' });
+    }
+    fs.unlinkSync(archivePath);
+}
+
+function findAndCopyBinary(searchDir, binaryName, destDir) {
+    const files = fs.readdirSync(searchDir, { withFileTypes: true });
+    for (const file of files) {
+        const fullPath = path.join(searchDir, file.name);
+        if (file.isDirectory()) {
+            const found = findAndCopyBinary(fullPath, binaryName, destDir);
+            if (found) return found;
+        } else if (file.name === binaryName) {
+            const destPath = path.join(destDir, binaryName);
+            fs.copyFileSync(fullPath, destPath);
+            if (process.platform !== 'win32') fs.chmodSync(destPath, 0o755);
+            return destPath;
+        }
+    }
+    return null;
+}
+
+function cleanupExtractedDirs(dir) {
+    const files = fs.readdirSync(dir, { withFileTypes: true });
+    for (const file of files) {
+        if (file.isDirectory()) {
+            fs.rmSync(path.join(dir, file.name), { recursive: true, force: true });
+        }
+    }
+}
+
+async function downloadBinariesIfNeeded() {
+    const platform = process.platform;
+    const platformBinaries = BINARIES[platform];
+    if (!platformBinaries) return;
+
+    const binDir = getBinDir();
+    if (!fs.existsSync(binDir)) {
+        fs.mkdirSync(binDir, { recursive: true });
+    }
+
+    for (const [name, config] of Object.entries(platformBinaries)) {
+        const allExist = config.files.every(f => fs.existsSync(path.join(binDir, f)));
+        if (allExist) {
+            console.log(`✓ ${name} binaries already present`);
+            continue;
+        }
+
+        console.log(`Downloading ${name}...`);
+        const archiveExt = config.type === 'tar.xz' ? '.tar.xz' :
+            config.type === 'tar.bz2' ? '.tar.bz2' : '.zip';
+        const archivePath = path.join(binDir, `${name}${archiveExt}`);
+
+        try {
+            await downloadFile(config.url, archivePath);
+            extractArchive(archivePath, binDir, config.type);
+
+            for (const binaryName of config.files) {
+                if (!fs.existsSync(path.join(binDir, binaryName))) {
+                    findAndCopyBinary(binDir, binaryName, binDir);
+                }
+            }
+            cleanupExtractedDirs(binDir);
+            console.log(`✓ ${name} downloaded successfully`);
+        } catch (err) {
+            console.error(`Failed to download ${name}:`, err.message);
+        }
+    }
+}
 
 function isFFmpegInstalled() {
     try {
@@ -19,6 +163,35 @@ function isFFmpegInstalled() {
     } catch (error) {
         return false;
     }
+}
+
+/**
+ * Get the path to a bundled binary (ffmpeg, ffprobe, phantomjs)
+ * Works in both development and packaged mode, on Windows and Linux
+ */
+function getBinaryPath(binaryName) {
+    const isWin = process.platform === 'win32';
+    const ext = isWin ? '.exe' : '';
+    const fullName = binaryName + ext;
+
+    let binDir;
+    if (app.isPackaged) {
+        binDir = path.join(process.resourcesPath, 'bin');
+    } else {
+        binDir = path.join(__dirname, 'bin');
+    }
+
+    const binaryPath = path.join(binDir, fullName);
+
+    // Check if bundled binary exists
+    if (fs.existsSync(binaryPath)) {
+        console.log(`Using bundled ${binaryName}: ${binaryPath}`);
+        return binaryPath;
+    }
+
+    // Fallback: try system PATH
+    console.log(`Bundled ${binaryName} not found, using system PATH`);
+    return binaryName;
 }
 
 async function installFFmpeg() {
@@ -161,6 +334,9 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
+    // Auto-download binaries on first launch
+    await downloadBinariesIfNeeded();
+
     await checkAndInstallFFmpeg();
 
     createWindow();
@@ -194,17 +370,34 @@ ipcMain.on('download-video', (event, { url, savePath }) => {
         binaryPath = path.join(process.resourcesPath, 'bin', binaryName);
     }
 
+    // Get bin directory for PATH
+    let binDir;
+    if (app.isPackaged) {
+        binDir = path.join(process.resourcesPath, 'bin');
+    } else {
+        binDir = path.join(__dirname, 'bin');
+    }
+
+    const pathSeparator = isWin ? ';' : ':';
+    const systemPaths = isWin
+        ? `${process.env.PATH || ''}`
+        : `/usr/bin:/usr/local/bin:/bin:${process.env.PATH || ''}`;
+
     const spawnEnv = {
         ...process.env,
-        PATH: `/usr/bin:/usr/local/bin:/bin:${process.env.PATH || ''}`,
+        PATH: `${binDir}${pathSeparator}${systemPaths}`,
         PYTHONIOENCODING: 'utf-8',
         LC_ALL: 'en_US.UTF-8'
     };
 
+    // Get bundled binary paths
+    const ffmpegPath = getBinaryPath('ffmpeg');
+    const phantomjsPath = getBinaryPath('phantomjs');
+
     const args = [
         '-f', 'bestvideo[height<=1080][vcodec^=avc1]+bestaudio[ext=m4a]/best[ext=mp4]/best',
         '--merge-output-format', 'mp4',
-        '--ffmpeg-location', '/usr/bin/ffmpeg',
+        '--ffmpeg-location', ffmpegPath,
         '--write-auto-subs',
         '--write-subs',
         '--sub-langs', 'en',
@@ -215,6 +408,11 @@ ipcMain.on('download-video', (event, { url, savePath }) => {
         '-o', path.join(savePath, '%(title)s.%(ext)s'),
         url
     ];
+
+    // Add JS runtime if phantomjs is available
+    if (fs.existsSync(phantomjsPath)) {
+        args.unshift('--js-runtime', phantomjsPath);
+    }
 
     const ydl = spawn(binaryPath, args, { env: spawnEnv });
 
