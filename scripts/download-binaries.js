@@ -1,20 +1,13 @@
 #!/usr/bin/env node
 
-/**
- * Cross-platform script to download FFmpeg and PhantomJS binaries
- * Works on both Windows and Linux
- */
-
 const https = require('https');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 
-// BIN_DIR is the project's bin folder (parent of scripts folder)
 const BIN_DIR = path.join(__dirname, '..', 'bin');
 
-// Binary download URLs
 const BINARIES = {
     linux: {
         ffmpeg: {
@@ -42,7 +35,6 @@ const BINARIES = {
     }
 };
 
-// Ensure bin directory exists
 if (!fs.existsSync(BIN_DIR)) {
     fs.mkdirSync(BIN_DIR, { recursive: true });
 }
@@ -57,7 +49,6 @@ function downloadFile(url, destPath) {
             protocol.get(currentUrl, {
                 headers: { 'User-Agent': 'Mozilla/5.0' }
             }, (response) => {
-                // Handle redirects
                 if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
                     console.log(`Redirecting to: ${response.headers.location}`);
                     request(response.headers.location);
@@ -97,7 +88,6 @@ function extractArchive(archivePath, destDir, type) {
     try {
         if (type === 'zip') {
             if (isWin) {
-                // Use PowerShell on Windows
                 execSync(`powershell -Command "Expand-Archive -Path '${archivePath}' -DestinationPath '${destDir}' -Force"`, { stdio: 'inherit' });
             } else {
                 execSync(`unzip -o "${archivePath}" -d "${destDir}"`, { stdio: 'inherit' });
@@ -108,7 +98,6 @@ function extractArchive(archivePath, destDir, type) {
             execSync(`tar -xjf "${archivePath}" -C "${destDir}"`, { stdio: 'inherit' });
         }
 
-        // Clean up archive
         fs.unlinkSync(archivePath);
         console.log(`Extracted and cleaned up: ${archivePath}`);
     } catch (err) {
@@ -130,7 +119,6 @@ function findAndCopyBinary(searchDir, binaryName, destDir) {
             const destPath = path.join(destDir, binaryName);
             fs.copyFileSync(fullPath, destPath);
 
-            // Make executable on Linux
             if (process.platform !== 'win32') {
                 fs.chmodSync(destPath, 0o755);
             }
@@ -173,7 +161,6 @@ async function downloadBinaries() {
     console.log(`\n=== Downloading binaries for ${platform} ===\n`);
 
     for (const [name, config] of Object.entries(platformBinaries)) {
-        // Check if all binaries already exist
         const allExist = config.files.every(f => checkBinaryExists(f));
 
         if (allExist) {
@@ -191,7 +178,6 @@ async function downloadBinaries() {
             let downloaded = false;
             let downloadError = null;
 
-            // Try primary URL first
             try {
                 await downloadFile(config.url, archivePath);
                 downloaded = true;
@@ -199,7 +185,6 @@ async function downloadBinaries() {
                 downloadError = err;
                 console.log(`Primary URL failed: ${err.message}`);
 
-                // Try alternate URL if available
                 if (config.altUrl) {
                     console.log(`Trying alternate URL...`);
                     try {
@@ -217,7 +202,6 @@ async function downloadBinaries() {
 
             extractArchive(archivePath, BIN_DIR, config.type);
 
-            // Find and copy the binaries to bin root
             for (const binaryName of config.files) {
                 if (!checkBinaryExists(binaryName)) {
                     const found = findAndCopyBinary(BIN_DIR, binaryName, BIN_DIR);
@@ -227,7 +211,6 @@ async function downloadBinaries() {
                 }
             }
 
-            // Clean up extracted directories
             cleanupExtractedDirs(BIN_DIR);
 
             console.log(`✓ ${name} downloaded and extracted successfully`);
@@ -239,7 +222,6 @@ async function downloadBinaries() {
 
     console.log('\n=== Binary download complete ===\n');
 
-    // List binaries in bin directory
     console.log('Binaries in bin/:');
     const binFiles = fs.readdirSync(BIN_DIR).filter(f => {
         const stat = fs.statSync(path.join(BIN_DIR, f));
@@ -248,7 +230,6 @@ async function downloadBinaries() {
     binFiles.forEach(f => console.log(`  - ${f}`));
 }
 
-// Run the download
 downloadBinaries().catch(err => {
     console.error('Fatal error:', err);
     process.exit(1);

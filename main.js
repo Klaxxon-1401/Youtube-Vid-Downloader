@@ -9,7 +9,6 @@ app.disableHardwareAcceleration();
 
 let mainWindow;
 
-// Binary download configuration
 const BINARIES = {
     linux: {
         ffmpeg: {
@@ -165,10 +164,6 @@ function isFFmpegInstalled() {
     }
 }
 
-/**
- * Get the path to a bundled binary (ffmpeg, ffprobe, phantomjs)
- * Works in both development and packaged mode, on Windows and Linux
- */
 function getBinaryPath(binaryName) {
     const isWin = process.platform === 'win32';
     const ext = isWin ? '.exe' : '';
@@ -183,13 +178,11 @@ function getBinaryPath(binaryName) {
 
     const binaryPath = path.join(binDir, fullName);
 
-    // Check if bundled binary exists
     if (fs.existsSync(binaryPath)) {
         console.log(`Using bundled ${binaryName}: ${binaryPath}`);
         return binaryPath;
     }
 
-    // Fallback: try system PATH
     console.log(`Bundled ${binaryName} not found, using system PATH`);
     return binaryName;
 }
@@ -334,11 +327,8 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
-    // Auto-download binaries on first launch
     await downloadBinariesIfNeeded();
-
     await checkAndInstallFFmpeg();
-
     createWindow();
 
     app.on('activate', () => {
@@ -370,7 +360,6 @@ ipcMain.on('download-video', (event, { url, savePath }) => {
         binaryPath = path.join(process.resourcesPath, 'bin', binaryName);
     }
 
-    // Get bin directory for PATH
     let binDir;
     if (app.isPackaged) {
         binDir = path.join(process.resourcesPath, 'bin');
@@ -390,7 +379,6 @@ ipcMain.on('download-video', (event, { url, savePath }) => {
         LC_ALL: 'en_US.UTF-8'
     };
 
-    // Get bundled binary paths
     const ffmpegPath = getBinaryPath('ffmpeg');
     const phantomjsPath = getBinaryPath('phantomjs');
 
@@ -409,7 +397,6 @@ ipcMain.on('download-video', (event, { url, savePath }) => {
         url
     ];
 
-    // Add JS runtime if phantomjs is available
     if (fs.existsSync(phantomjsPath)) {
         args.unshift('--js-runtime', phantomjsPath);
     }

@@ -10,7 +10,6 @@ const progressBar = document.getElementById('progress-bar');
 const speedText = document.getElementById('speed-text');
 const etaText = document.getElementById('eta-text');
 
-// Window Controls
 document.getElementById('min-btn').addEventListener('click', () => {
     ipcRenderer.send('window-control', 'minimize');
 });
@@ -19,7 +18,6 @@ document.getElementById('close-btn').addEventListener('click', () => {
     ipcRenderer.send('window-control', 'close');
 });
 
-// Browse
 browseBtn.addEventListener('click', async () => {
     const path = await ipcRenderer.invoke('select-directory');
     if (path) {
@@ -27,13 +25,6 @@ browseBtn.addEventListener('click', async () => {
     }
 });
 
-// Set default path if empty (optional, requires default logic)
-// For now user must select or we send empty and backend handles default?
-// Backend expects a path. Let's force selection or default to home/Downloads
-// Actually in main.js we could handle default, but JS can't easily guess non-standard paths without os.homedir().
-// We'll require input or leave blank to prompt user.
-
-// Download
 downloadBtn.addEventListener('click', () => {
     const url = urlInput.value.trim();
     const savePath = pathInput.value.trim();
@@ -47,7 +38,6 @@ downloadBtn.addEventListener('click', () => {
         return;
     }
 
-    // Reset UI
     downloadBtn.disabled = true;
     downloadBtn.innerText = "Downloading...";
     progressBar.style.width = '0%';
@@ -57,7 +47,6 @@ downloadBtn.addEventListener('click', () => {
     ipcRenderer.send('download-video', { url, savePath });
 });
 
-// Progress Updates
 ipcRenderer.on('download-progress', (event, data) => {
     if (data.type === 'progress') {
         const { percent, speed, eta } = data.data;
