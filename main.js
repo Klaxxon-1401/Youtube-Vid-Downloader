@@ -8,23 +8,9 @@ app.disableHardwareAcceleration();
 let mainWindow;
 
 // Binary resolution helpers
-function getBinDir() {
-    if (app.isPackaged) {
-        return path.join(process.resourcesPath, 'bin');
-    }
-    return path.join(__dirname, 'bin', 'win32');
-}
-
-// Checks if a binary exists in bundled bin folder or system PATH
+// Checks if a binary exists in system PATH
 function findBinary(binaryName) {
     const isWin = process.platform === 'win32';
-    const fullName = binaryName + (isWin ? '.exe' : '');
-
-    // 1. Check bundled bin folder (Prioritize bundled versions)
-    const bundledPath = path.join(getBinDir(), fullName);
-    if (fs.existsSync(bundledPath)) return bundledPath;
-
-    // 2. Check system PATH
     try {
         const cmd = isWin ? `where ${binaryName}` : `which ${binaryName}`;
         const stdout = execSync(cmd, { stdio: 'pipe' }).toString().trim();
@@ -35,14 +21,22 @@ function findBinary(binaryName) {
     } catch (e) {
         // Not in PATH
     }
-
     return null;
 }
 
-function getBinaryPath(binaryName) {
-    const found = findBinary(binaryName);
-    if (found) return found;
-    return binaryName;
+function checkDependencies() {
+    const ffmpeg = findBinary('ffmpeg');
+    const phantomjs = findBinary('phantomjs');
+
+    if (!ffmpeg || !phantomjs) {
+        dialog.showErrorBox(
+            "Dependency Missing",
+            "ffmpeg and Phantomjs not installed , These packages are mandatory for proper function"
+        );
+        app.quit();
+        return false;
+    }
+    return true;
 }
 
 function createWindow() {
@@ -63,7 +57,7 @@ function createWindow() {
     mainWindow.loadFile('src/index.html');
 }
 
-// Single instance lock - prevent multiple hidden processes
+// Single instance lock
 const gotTheLock = app.requestSingleInstanceLock();
 
 if (!gotTheLock) {
@@ -78,7 +72,9 @@ if (!gotTheLock) {
     });
 
     app.whenReady().then(() => {
-        createWindow();
+        if (checkDependencies()) {
+            createWindow();
+        }
 
         app.on('activate', () => {
             if (BrowserWindow.getAllWindows().length === 0) {
@@ -94,7 +90,6 @@ app.on('window-all-closed', () => {
     }
 });
 
-
 ipcMain.handle('select-directory', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
         properties: ['openDirectory']
@@ -105,27 +100,24 @@ ipcMain.handle('select-directory', async () => {
 ipcMain.on('download-video', (event, { url, savePath }) => {
     const isWin = process.platform === 'win32';
     const binaryName = isWin ? 'yt-dlp' : 'yt-dlp-linux';
-    const binaryPath = findBinary(binaryName);
+
+    // Check for yt-dlp specially as it might be named differently or in PATH
+    let binaryPath = findBinary(binaryName);
+    if (!binaryPath && isWin) binaryPath = findBinary('yt-dlp'); // fallback
+    if (!binaryPath && !isWin) binaryPath = findBinary('yt-dlp'); // fallback
 
     if (!binaryPath) {
-        mainWindow.webContents.send('download-error', `Engine ${binaryName} not found! This indicates a broken installation.`);
+        mainWindow.webContents.send('download-error', `Engine ${binaryName} not found! This package is mandatory.`);
         return;
     }
 
-    const binDir = getBinDir();
-    const pathSeparator = isWin ? ';' : ':';
-    const systemPaths = isWin
-        ? `${process.env.PATH || ''}`
-        : `/usr/bin:/usr/local/bin:/bin:${process.env.PATH || ''}`;
-
     const spawnEnv = {
         ...process.env,
-        PATH: `${binDir}${pathSeparator}${systemPaths}`,
         PYTHONIOENCODING: 'utf-8',
         LC_ALL: 'en_US.UTF-8'
     };
 
-    const ffmpegPath = getBinaryPath('ffmpeg');
+    const ffmpegPath = findBinary('ffmpeg');
     const phantomjsPath = findBinary('phantomjs');
 
     const args = [
@@ -152,24 +144,18 @@ ipcMain.on('download-video', (event, { url, savePath }) => {
     let errorLog = '';
 
     ydl.on('error', (err) => {
-        console.error("Failed to start yt-dlp binary:", err);
-        mainWindow.webContents.send('download-error', `Failed to start engine: ${err.message}\nPath: ${binaryPath}`);
+        mainWindow.webContents.send('download-error', `Failed to start engine: ${err.message}`);
     });
 
     ydl.stdout.on('data', (data) => {
         const output = data.toString().replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-
         const progressMatch = output.match(/\[download\]\s+(\d+\.\d+)%\s+of\s+~?\s*([\d\.]+\w+)\s+at\s+([\d\.]+\w+\/s)\s+ETA\s+([\d:]+)/);
 
         if (progressMatch) {
             const [_, percent, size, speed, eta] = progressMatch;
             mainWindow.webContents.send('download-progress', {
                 type: 'progress',
-                data: {
-                    percent: parseFloat(percent),
-                    speed,
-                    eta
-                }
+                data: { percent: parseFloat(percent), speed, eta }
             });
         } else if (output.includes('[Merger]')) {
             mainWindow.webContents.send('download-progress', { type: 'status', data: 'Merging files...' });
@@ -178,17 +164,13 @@ ipcMain.on('download-video', (event, { url, savePath }) => {
         }
     });
 
-    ydl.stderr.on('data', (data) => {
-        errorLog += data.toString();
-    });
+    ydl.stderr.on('data', (data) => { errorLog += data.toString(); });
 
     ydl.on('close', (code) => {
-        console.log(`yt-dlp closed with code: ${code}`);
         if (code === 0) {
             mainWindow.webContents.send('download-progress', { type: 'complete', data: 'Success' });
         } else {
-            const finalError = errorLog.trim() || `Process exited with code ${code}`;
-            mainWindow.webContents.send('download-progress', { type: 'error', data: finalError });
+            mainWindow.webContents.send('download-progress', { type: 'error', data: errorLog.trim() || `Exit code ${code}` });
         }
     });
 });

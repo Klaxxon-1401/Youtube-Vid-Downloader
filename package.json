@@ -6,9 +6,7 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "dist": "npm run download-binaries && electron-builder",
-    "postinstall": "node scripts/download-binaries.js",
-    "download-binaries": "node scripts/download-binaries.js"
+    "dist": "electron-builder"
   },
   "author": "Dvn",
   "license": "ISC",
@@ -23,15 +21,6 @@
       "main.js",
       "logo.png"
     ],
-    "extraResources": [
-      {
-        "from": "bin/${platform}",
-        "to": "bin",
-        "filter": [
-          "**/*"
-        ]
-      }
-    ],
     "linux": {
       "target": "AppImage",
       "category": "Video",
@@ -40,7 +29,7 @@
     "win": {
       "target": "nsis",
       "executableName": "YTDownloader",
-      "icon": "youtube_logo.png"
+      "icon": "logo.png"
     }
   }
 }
