@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  yt-downloader:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    ports:
+      - "8080:8080" # noVNC Web UI
+      - "5900:5900" # Raw VNC (optional)
+    volumes:
+      - ./Downloads:/root/Downloads # Map downloads to host folder
+    environment:
+      - RESOLUTION=1280x800x24
+    restart: unless-stopped

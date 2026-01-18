@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Downloader</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css" />
+</head>
+
+<body>
+    <div class="titlebar">
+        <div class="app-icon">
+            <img src="logo.png" alt="Logo">
+        </div>
+        <div class="app-title">YouTube Downloader</div>
+        <div class="window-controls">
+            <button id="min-btn">-</button>
+            <button id="close-btn">×</button>
+        </div>
+    </div>
+
+    <!-- Animated Side Decorations -->
+    <div class="side-decoration left animate__animated animate__fadeInLeft">
+        <div class="deco-icon">🎵</div>
+        <div class="deco-line"></div>
+    </div>
+
+    <div class="side-decoration right animate__animated animate__fadeInRight">
+        <div class="deco-icon">🎬</div>
+        <div class="deco-line"></div>
+    </div>
+
+    <div class="container animate__animated animate__zoomIn">
+        <div class="content glass-effect">
+            <div class="header-section animate__animated animate__fadeInDown">
+                <h1>Download Video</h1>
+                <p>Paste a YouTube link to get started</p>
+            </div>
+
+            <div class="input-group animate__animated animate__fadeInUp">
+                <label>Video URL</label>
+                <input type="text" id="url-input" placeholder="https://youtube.com/watch?v=...">
+            </div>
+
+            <div class="input-group animate__animated animate__fadeInUp">
+                <label>Save Location</label>
+                <div class="row">
+                    <input type="text" id="path-input" readonly>
+                    <button id="browse-btn">Browse</button>
+                </div>
+            </div>
+
+            <div class="status-container">
+                <div class="progress-info">
+                    <span id="status-text">Ready to download</span>
+                    <span id="percent-text">0%</span>
+                </div>
+                <div class="progress-bar-bg">
+                    <div class="progress-bar-fill" id="progress-bar"></div>
+                </div>
+                <div class="meta-info">
+                    <span id="speed-text"></span>
+                    <span id="eta-text"></span>
+                </div>
+            </div>
+
+            <button id="download-btn">Download Now</button>
+        </div>
+    </div>
+
+    <!-- Local scripts for instant loading -->
+    <script src="renderer.js"></script>
+</body>
+
+</html>

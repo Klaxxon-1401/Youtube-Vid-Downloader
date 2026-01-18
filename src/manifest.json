@@ -1,0 +1,15 @@
+{
+    "name": "YouTube Downloader",
+    "short_name": "YT Downloader",
+    "start_url": "index.html",
+    "display": "standalone",
+    "background_color": "#121212",
+    "theme_color": "#FF0000",
+    "icons": [
+        {
+            "src": "logo.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        }
+    ]
+}

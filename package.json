@@ -1,0 +1,42 @@
+{
+  "name": "youtube-downloader-electron",
+  "version": "1.0.0",
+  "description": "A modern YouTube Video Downloader",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder"
+  },
+  "author": "Antigravity",
+  "license": "ISC",
+  "devDependencies": {
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.example.youtubedownloader",
+    "files": [
+      "src/**/*",
+      "main.js",
+      "youtube_logo.png"
+    ],
+    "extraResources": [
+      {
+        "from": "bin",
+        "to": "bin",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "linux": {
+      "target": "AppImage",
+      "category": "Video",
+      "executableName": "youtube-downloader"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "youtube_logo.png"
+    }
+  }
+}
