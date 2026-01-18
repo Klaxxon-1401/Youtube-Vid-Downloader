@@ -21,6 +21,7 @@
         </div>
     </div>
 
+
     <!-- Animated Side Decorations -->
     <div class="side-decoration left animate__animated animate__fadeInLeft">
         <div class="deco-icon">🎵</div>
@@ -33,49 +34,6 @@
     </div>
 
     <div class="container animate__animated animate__zoomIn">
-        <!-- Setup Modal Overlay -->
-        <div id="setup-modal" class="modal-overlay" style="display: none;">
-            <div class="modal-content glass-effect animate__animated animate__bounceIn">
-                <div class="modal-header">
-                    <h2>Setup Required</h2>
-                    <p>FFmpeg and PhantomJS are missing. They are required to download and process videos.</p>
-                </div>
-
-                <div id="setup-initial">
-                    <button id="start-setup-btn" class="primary-btn">Download & Install Libraries (~100MB)</button>
-                    <p class="modal-hint">This only needs to be done once.</p>
-                </div>
-
-                <div id="setup-progress-container" style="display: none;">
-                    <div class="progress-info">
-                        <span id="setup-status">Initializing...</span>
-                        <span id="setup-percent">0%</span>
-                    </div>
-                    <div class="progress-bar-bg">
-                        <div class="progress-bar-fill" id="setup-progress-bar"></div>
-                    </div>
-                    <div id="setup-details" class="progress-details">
-                        <span id="setup-speed"></span>
-                        <span id="setup-eta"></span>
-                    </div>
-                    <p class="modal-hint">Please keep the app open.</p>
-                </div>
-
-                <div id="setup-complete" style="display: none;">
-                    <div class="success-icon">✓</div>
-                    <h3>Setup Complete!</h3>
-                    <p>Everything is ready. You can now download videos.</p>
-                    <button id="close-setup-btn" class="primary-btn">Start Using App</button>
-                </div>
-
-                <div id="setup-error" style="display: none;">
-                    <div class="error-icon">✗</div>
-                    <h3>Setup Failed</h3>
-                    <p id="setup-error-msg">An error occurred during setup.</p>
-                    <button id="retry-setup-btn" class="primary-btn">Retry Setup</button>
-                </div>
-            </div>
-        </div>
 
         <div class="content glass-effect">
             <div class="header-section animate__animated animate__fadeInDown">

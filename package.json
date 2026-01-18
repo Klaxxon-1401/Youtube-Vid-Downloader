@@ -6,7 +6,7 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder",
+    "dist": "npm run download-binaries && electron-builder",
     "postinstall": "node scripts/download-binaries.js",
     "download-binaries": "node scripts/download-binaries.js"
   },
@@ -21,11 +21,11 @@
     "files": [
       "src/**/*",
       "main.js",
-      "youtube_logo.png"
+      "logo.png"
     ],
     "extraResources": [
       {
-        "from": "bin",
+        "from": "bin/${platform}",
         "to": "bin",
         "filter": [
           "**/*"

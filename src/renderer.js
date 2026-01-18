@@ -10,22 +10,6 @@ const progressBar = document.getElementById('progress-bar');
 const speedText = document.getElementById('speed-text');
 const etaText = document.getElementById('eta-text');
 
-// Setup Modal Elements
-const setupModal = document.getElementById('setup-modal');
-const setupInitial = document.getElementById('setup-initial');
-const setupProgressContainer = document.getElementById('setup-progress-container');
-const setupComplete = document.getElementById('setup-complete');
-const setupError = document.getElementById('setup-error');
-const setupStatus = document.getElementById('setup-status');
-const setupPercent = document.getElementById('setup-percent');
-const setupProgressBar = document.getElementById('setup-progress-bar');
-const setupSpeed = document.getElementById('setup-speed');
-const setupEta = document.getElementById('setup-eta');
-const startSetupBtn = document.getElementById('start-setup-btn');
-const closeSetupBtn = document.getElementById('close-setup-btn');
-const retrySetupBtn = document.getElementById('retry-setup-btn');
-const setupErrorMsg = document.getElementById('setup-error-msg');
-
 // --- Window Controls ---
 document.getElementById('min-btn').addEventListener('click', () => {
     ipcRenderer.send('window-control', 'minimize');
@@ -33,61 +17,6 @@ document.getElementById('min-btn').addEventListener('click', () => {
 
 document.getElementById('close-btn').addEventListener('click', () => {
     ipcRenderer.send('window-control', 'close');
-});
-
-// --- Setup Flow ---
-startSetupBtn.addEventListener('click', () => {
-    setupInitial.style.display = 'none';
-    setupProgressContainer.style.display = 'block';
-    ipcRenderer.send('start-setup');
-});
-
-retrySetupBtn.addEventListener('click', () => {
-    setupError.style.display = 'none';
-    setupProgressContainer.style.display = 'block';
-    ipcRenderer.send('start-setup');
-});
-
-closeSetupBtn.addEventListener('click', () => {
-    setupModal.style.display = 'none';
-});
-
-ipcRenderer.on('setup-required', (event, missing) => {
-    setupModal.style.display = 'flex';
-    downloadBtn.disabled = true;
-    downloadBtn.innerText = "Setup Required";
-});
-
-ipcRenderer.on('setup-progress', (event, data) => {
-    if (data.status === 'complete') {
-        setupProgressContainer.style.display = 'none';
-        setupComplete.style.display = 'block';
-        downloadBtn.disabled = false;
-        downloadBtn.innerText = "Download Now";
-    } else if (data.status === 'error') {
-        setupProgressContainer.style.display = 'none';
-        setupError.style.display = 'block';
-        setupErrorMsg.innerText = data.message || "An error occurred";
-    } else {
-        // Progress update
-        setupStatus.innerText = data.status;
-        if (data.percent !== undefined) {
-            setupProgressBar.style.width = `${data.percent}%`;
-            setupPercent.innerText = `${Math.round(data.percent)}%`;
-        }
-
-        if (data.speed) {
-            setupSpeed.innerText = (data.speed / 1024 / 1024).toFixed(1) + " MB/s";
-        } else {
-            setupSpeed.innerText = "";
-        }
-
-        if (data.eta) {
-            setupEta.innerText = `ETA: ${data.eta}s`;
-        } else {
-            setupEta.innerText = "";
-        }
-    }
 });
 
 // --- Download Logic ---

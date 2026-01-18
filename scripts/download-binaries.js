@@ -11,9 +11,14 @@ const BIN_DIR = path.join(__dirname, '..', 'bin');
 const BINARIES = {
     linux: {
         ffmpeg: {
-            url: 'https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz',
+            url: 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz',
             type: 'tar.xz',
             files: ['ffmpeg', 'ffprobe']
+        },
+        yt_dlp: {
+            url: 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux',
+            type: 'binary',
+            files: ['yt-dlp-linux']
         },
         phantomjs: {
             url: 'https://bitbucket.org/ariya/phantomjs/downloads/phantomjs-2.1.1-linux-x86_64.tar.bz2',
@@ -23,9 +28,14 @@ const BINARIES = {
     },
     win32: {
         ffmpeg: {
-            url: 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip',
+            url: 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip',
             type: 'zip',
             files: ['ffmpeg.exe', 'ffprobe.exe']
+        },
+        yt_dlp: {
+            url: 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe',
+            type: 'binary',
+            files: ['yt-dlp.exe']
         },
         phantomjs: {
             url: 'https://bitbucket.org/ariya/phantomjs/downloads/phantomjs-2.1.1-windows.zip',
@@ -92,14 +102,19 @@ function extractArchive(archivePath, destDir, type) {
             } else {
                 execSync(`unzip -o "${archivePath}" -d "${destDir}"`, { stdio: 'inherit' });
             }
+            fs.unlinkSync(archivePath);
         } else if (type === 'tar.xz') {
             execSync(`tar -xJf "${archivePath}" -C "${destDir}"`, { stdio: 'inherit' });
+            fs.unlinkSync(archivePath);
         } else if (type === 'tar.bz2') {
             execSync(`tar -xjf "${archivePath}" -C "${destDir}"`, { stdio: 'inherit' });
+            fs.unlinkSync(archivePath);
+        } else if (type === 'binary') {
+            if (!isWin) {
+                fs.chmodSync(archivePath, 0o755);
+            }
         }
-
-        fs.unlinkSync(archivePath);
-        console.log(`Extracted and cleaned up: ${archivePath}`);
+        console.log(`Processed: ${archivePath}`);
     } catch (err) {
         console.error(`Failed to extract ${archivePath}:`, err.message);
         throw err;
@@ -149,85 +164,61 @@ function checkBinaryExists(binaryName) {
 }
 
 async function downloadBinaries() {
-    const platform = process.platform;
+    // Force win32 for the binaries we want to bundle, as requested
+    const platform = 'win32';
     const platformBinaries = BINARIES[platform];
 
     if (!platformBinaries) {
         console.error(`Unsupported platform: ${platform}`);
-        console.log('Supported platforms: linux, win32');
         process.exit(1);
     }
 
-    console.log(`\n=== Downloading binaries for ${platform} ===\n`);
+    console.log(`\n=== Forcing download of ${platform} binaries for bundling ===\n`);
+
+    // Download directly into bin/win32 to segregate sources
+    const targetDir = path.join(BIN_DIR, platform);
+    if (!fs.existsSync(targetDir)) {
+        fs.mkdirSync(targetDir, { recursive: true });
+    }
 
     for (const [name, config] of Object.entries(platformBinaries)) {
-        const allExist = config.files.every(f => checkBinaryExists(f));
+        const allExist = config.files.every(f => fs.existsSync(path.join(targetDir, f)));
 
         if (allExist) {
-            console.log(`✓ ${name} binaries already exist, skipping...`);
+            console.log(`✓ ${name} binaries already exist in ${targetDir}, skipping...`);
             continue;
         }
 
         console.log(`\n--- Downloading ${name} ---`);
 
-        const archiveExt = config.type === 'tar.xz' ? '.tar.xz' :
-            config.type === 'tar.bz2' ? '.tar.bz2' : '.zip';
-        const archivePath = path.join(BIN_DIR, `${name}${archiveExt}`);
+        const archiveExt = config.type === 'binary' ? '' : '.zip';
+        let archiveName = `${name}${archiveExt}`;
+        if (config.type === 'binary') {
+            archiveName = config.files[0];
+        }
+        const archivePath = path.join(targetDir, archiveName);
 
         try {
-            let downloaded = false;
-            let downloadError = null;
+            await downloadFile(config.url, archivePath);
 
-            try {
-                await downloadFile(config.url, archivePath);
-                downloaded = true;
-            } catch (err) {
-                downloadError = err;
-                console.log(`Primary URL failed: ${err.message}`);
+            if (config.type !== 'binary') {
+                extractArchive(archivePath, targetDir, config.type);
 
-                if (config.altUrl) {
-                    console.log(`Trying alternate URL...`);
-                    try {
-                        await downloadFile(config.altUrl, archivePath);
-                        downloaded = true;
-                    } catch (altErr) {
-                        console.log(`Alternate URL also failed: ${altErr.message}`);
+                for (const binaryName of config.files) {
+                    if (!fs.existsSync(path.join(targetDir, binaryName))) {
+                        findAndCopyBinary(targetDir, binaryName, targetDir);
                     }
                 }
+                cleanupExtractedDirs(targetDir);
             }
 
-            if (!downloaded) {
-                throw downloadError || new Error('All download URLs failed');
-            }
-
-            extractArchive(archivePath, BIN_DIR, config.type);
-
-            for (const binaryName of config.files) {
-                if (!checkBinaryExists(binaryName)) {
-                    const found = findAndCopyBinary(BIN_DIR, binaryName, BIN_DIR);
-                    if (!found) {
-                        console.warn(`Warning: Could not find ${binaryName} in extracted archive`);
-                    }
-                }
-            }
-
-            cleanupExtractedDirs(BIN_DIR);
-
-            console.log(`✓ ${name} downloaded and extracted successfully`);
+            console.log(`✓ ${name} processed successfully`);
         } catch (err) {
             console.error(`✗ Failed to download ${name}:`, err.message);
-            console.log(`  You may need to download ${name} manually.`);
         }
     }
 
-    console.log('\n=== Binary download complete ===\n');
-
-    console.log('Binaries in bin/:');
-    const binFiles = fs.readdirSync(BIN_DIR).filter(f => {
-        const stat = fs.statSync(path.join(BIN_DIR, f));
-        return stat.isFile();
-    });
-    binFiles.forEach(f => console.log(`  - ${f}`));
+    console.log(`\n=== Binary download complete for ${platform} ===\n`);
 }
 
 downloadBinaries().catch(err => {
