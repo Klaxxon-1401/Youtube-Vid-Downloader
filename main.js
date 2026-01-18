@@ -27,11 +27,12 @@ function findBinary(binaryName) {
 function checkDependencies() {
     const ffmpeg = findBinary('ffmpeg');
     const phantomjs = findBinary('phantomjs');
+    const ytdlp = findBinary('yt-dlp');
 
-    if (!ffmpeg || !phantomjs) {
+    if (!ffmpeg || !phantomjs || !ytdlp) {
         dialog.showErrorBox(
             "Dependency Missing",
-            "ffmpeg and Phantomjs not installed , These packages are mandatory for proper function"
+            "ffmpeg, yt-dlp and Phantomjs not installed , These packages are mandatory for proper function"
         );
         app.quit();
         return false;
