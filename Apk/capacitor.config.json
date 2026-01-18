@@ -1,6 +1,0 @@
-{
-    "appId": "com.youtubedownloader.app",
-    "appName": "YouTube Downloader",
-    "webDir": "www",
-    "bundledWebRuntime": false
-}
