@@ -43,9 +43,8 @@ function getBinDir() {
     return path.join(__dirname, 'bin');
 }
 
-function downloadFile(url, destPath) {
+function downloadFile(url, destPath, onProgress) {
     return new Promise((resolve, reject) => {
-        console.log(`Downloading: ${url}`);
         const protocol = url.startsWith('https') ? https : http;
 
         const request = (currentUrl) => {
@@ -59,10 +58,34 @@ function downloadFile(url, destPath) {
                     reject(new Error(`HTTP ${response.statusCode}`));
                     return;
                 }
+
+                const totalBytes = parseInt(response.headers['content-length'], 10);
+                let downloadedBytes = 0;
+                let startTime = Date.now();
+
                 const file = fs.createWriteStream(destPath);
                 response.pipe(file);
+
+                response.on('data', (chunk) => {
+                    downloadedBytes += chunk.length;
+                    if (onProgress && totalBytes) {
+                        const elapsed = (Date.now() - startTime) / 1000;
+                        const speed = downloadedBytes / elapsed; // bytes per second
+                        const remainingBytes = totalBytes - downloadedBytes;
+                        const eta = speed > 0 ? Math.round(remainingBytes / speed) : 0;
+                        const percent = (downloadedBytes / totalBytes) * 100;
+
+                        onProgress({
+                            percent,
+                            speed,
+                            eta,
+                            status: 'Downloading...'
+                        });
+                    }
+                });
+
                 file.on('finish', () => { file.close(); resolve(destPath); });
-                file.on('error', reject);
+                file.on('error', (err) => { fs.unlink(destPath, () => { }); reject(err); });
             }).on('error', reject);
         };
         request(url);
@@ -150,162 +173,136 @@ async function downloadBinariesIfNeeded() {
     }
 }
 
-function isFFmpegInstalled() {
+// Checks if a binary exists in system PATH or bundled bin folder
+function findBinary(binaryName) {
+    const isWin = process.platform === 'win32';
+    const fullName = binaryName + (isWin ? '.exe' : '');
+
+    // 1. Check bundled bin folder
+    const bundledPath = path.join(getBinDir(), fullName);
+    if (fs.existsSync(bundledPath)) return bundledPath;
+
+    // 2. Check system PATH
     try {
-        const isWin = process.platform === 'win32';
-        if (isWin) {
-            execSync('where ffmpeg', { stdio: 'ignore' });
-        } else {
-            execSync('which ffmpeg', { stdio: 'ignore' });
+        const cmd = isWin ? `where ${binaryName}` : `which ${binaryName}`;
+        const stdout = execSync(cmd, { stdio: 'pipe' }).toString().trim();
+        if (stdout) {
+            const firstPath = stdout.split('\n')[0].trim();
+            if (fs.existsSync(firstPath)) return firstPath;
         }
-        return true;
-    } catch (error) {
-        return false;
+    } catch (e) {
+        // Not in PATH
     }
+
+    return null;
 }
 
 function getBinaryPath(binaryName) {
-    const isWin = process.platform === 'win32';
-    const ext = isWin ? '.exe' : '';
-    const fullName = binaryName + ext;
-
-    let binDir;
-    if (app.isPackaged) {
-        binDir = path.join(process.resourcesPath, 'bin');
-    } else {
-        binDir = path.join(__dirname, 'bin');
+    const found = findBinary(binaryName);
+    if (found) {
+        console.log(`Using ${binaryName}: ${found}`);
+        return found;
     }
-
-    const binaryPath = path.join(binDir, fullName);
-
-    if (fs.existsSync(binaryPath)) {
-        console.log(`Using bundled ${binaryName}: ${binaryPath}`);
-        return binaryPath;
-    }
-
-    console.log(`Bundled ${binaryName} not found, using system PATH`);
+    console.log(`${binaryName} not found, returning default name`);
     return binaryName;
 }
 
-async function installFFmpeg() {
-    return new Promise((resolve) => {
-        const isWin = process.platform === 'win32';
+async function checkBinaryStatus() {
+    const isWin = process.platform === 'win32';
+    const ffmpeg = findBinary('ffmpeg');
+    const phantomjs = findBinary('phantomjs');
+    const ytdlp = findBinary(isWin ? 'yt-dlp' : 'yt-dlp-linux');
 
-        let installCommand;
-        let shell = true;
+    return {
+        ready: !!(ffmpeg && ytdlp),
+        missing: {
+            ffmpeg: !ffmpeg,
+            phantomjs: !phantomjs,
+            ytdlp: !ytdlp
+        }
+    };
+}
 
-        if (isWin) {
-            installCommand = 'winget install --id=Gyan.FFmpeg -e --accept-source-agreements --accept-package-agreements';
-        } else {
-            const packageManagers = [
-                { check: 'apt', install: 'sudo apt update && sudo apt install -y ffmpeg' },
-                { check: 'dnf', install: 'sudo dnf install -y ffmpeg' },
-                { check: 'pacman', install: 'sudo pacman -S --noconfirm ffmpeg' },
-                { check: 'zypper', install: 'sudo zypper install -y ffmpeg' },
-                { check: 'apk', install: 'sudo apk add ffmpeg' }
-            ];
+let setupInProgress = false;
 
-            for (const pm of packageManagers) {
-                try {
-                    execSync(`which ${pm.check}`, { stdio: 'ignore' });
-                    installCommand = pm.install;
-                    break;
-                } catch (e) {
-                }
-            }
+async function runSetup(window) {
+    if (setupInProgress) return;
+    setupInProgress = true;
 
-            if (!installCommand) {
-                resolve({
-                    success: false,
-                    message: 'Could not detect package manager. Please install ffmpeg manually.'
-                });
-                return;
-            }
+    const binDir = getBinDir();
+    if (!fs.existsSync(binDir)) fs.mkdirSync(binDir, { recursive: true });
+
+    const platform = process.platform;
+    const platformBinaries = BINARIES[platform];
+    if (!platformBinaries) {
+        window.webContents.send('setup-progress', { status: 'error', message: 'Unsupported platform' });
+        setupInProgress = false;
+        return;
+    }
+
+    const steps = Object.entries(platformBinaries);
+    let completedSteps = 0;
+
+    for (const [name, config] of steps) {
+        // Check if this specific one is missing
+        const existing = config.files.every(f => {
+            const fileName = f.replace('.exe', '');
+            return fs.existsSync(path.join(binDir, f)) || findBinary(fileName);
+        });
+
+        if (existing) {
+            completedSteps++;
+            window.webContents.send('setup-progress', {
+                percent: (completedSteps / steps.length) * 100,
+                status: `✓ ${name} ready`
+            });
+            continue;
         }
 
-        console.log(`Installing ffmpeg with command: ${installCommand}`);
+        try {
+            await downloadFile(config.url, archivePath, (p) => {
+                // Adjust percent to be step-relative
+                const stepBase = (completedSteps / steps.length) * 100;
+                const stepWeight = (1 / steps.length) * 0.8; // Give extraction some weight too
+                const totalPercent = stepBase + (p.percent * stepWeight);
 
-        exec(installCommand, { shell }, (error, stdout, stderr) => {
-            if (error) {
-                console.error('FFmpeg installation error:', error);
-                console.error('stderr:', stderr);
-                resolve({
-                    success: false,
-                    message: `Installation failed: ${error.message}\n\nPlease install ffmpeg manually.`
+                window.webContents.send('setup-progress', {
+                    percent: totalPercent,
+                    status: `Downloading ${name}...`,
+                    eta: p.eta,
+                    speed: p.speed
                 });
-            } else {
-                console.log('FFmpeg installed successfully');
-                resolve({
-                    success: true,
-                    message: 'FFmpeg installed successfully!'
-                });
+            });
+
+            window.webContents.send('setup-progress', {
+                percent: ((completedSteps + 0.8) / steps.length) * 100,
+                status: `Extracting ${name}...`
+            });
+
+            extractArchive(archivePath, binDir, config.type);
+
+            for (const binaryName of config.files) {
+                if (!fs.existsSync(path.join(binDir, binaryName))) {
+                    findAndCopyBinary(binDir, binaryName, binDir);
+                }
             }
-        });
-    });
-}
+            cleanupExtractedDirs(binDir);
 
-async function checkAndInstallFFmpeg() {
-    if (isFFmpegInstalled()) {
-        console.log('FFmpeg is already installed');
-        return;
+            completedSteps++;
+            window.webContents.send('setup-progress', {
+                percent: (completedSteps / steps.length) * 100,
+                status: `✓ ${name} installed`
+            });
+        } catch (err) {
+            console.error(`Failed to setup ${name}:`, err);
+            window.webContents.send('setup-progress', { status: 'error', message: `Failed to download ${name}` });
+            setupInProgress = false;
+            return;
+        }
     }
 
-    console.log('FFmpeg not found, attempting to install...');
-
-    const response = await dialog.showMessageBox({
-        type: 'info',
-        title: 'FFmpeg Required',
-        message: 'FFmpeg is required but not installed.',
-        detail: 'FFmpeg is needed for video processing. Would you like to install it now?',
-        buttons: ['Install', 'Cancel'],
-        defaultId: 0,
-        cancelId: 1
-    });
-
-    if (response.response === 1) {
-        await dialog.showMessageBox({
-            type: 'warning',
-            title: 'FFmpeg Not Installed',
-            message: 'Some features may not work without FFmpeg.',
-            buttons: ['OK']
-        });
-        return;
-    }
-
-    const installResult = await installFFmpeg();
-
-    if (installResult.success) {
-        await dialog.showMessageBox({
-            type: 'info',
-            title: 'Installation Complete',
-            message: installResult.message,
-            buttons: ['OK']
-        });
-    } else {
-        await dialog.showMessageBox({
-            type: 'error',
-            title: 'Installation Failed',
-            message: installResult.message,
-            detail: getManualInstallInstructions(),
-            buttons: ['OK']
-        });
-    }
-}
-
-function getManualInstallInstructions() {
-    const isWin = process.platform === 'win32';
-
-    if (isWin) {
-        return 'Windows Installation:\n' +
-            '1. Download from https://ffmpeg.org/download.html\n' +
-            '2. Or use: winget install ffmpeg\n' +
-            '3. Or use: choco install ffmpeg';
-    } else {
-        return 'Linux Installation:\n' +
-            '• Ubuntu/Debian: sudo apt install ffmpeg\n' +
-            '• Fedora: sudo dnf install ffmpeg\n' +
-            '• Arch: sudo pacman -S ffmpeg';
-    }
+    setupInProgress = false;
+    window.webContents.send('setup-progress', { percent: 100, status: 'complete' });
 }
 
 function createWindow() {
@@ -324,6 +321,16 @@ function createWindow() {
     });
 
     mainWindow.loadFile('src/index.html');
+
+    // Check status once window is ready to report
+    mainWindow.webContents.on('did-finish-load', async () => {
+        const status = await checkBinaryStatus();
+        if (!status.ready) {
+            mainWindow.webContents.send('setup-required', status.missing);
+        } else {
+            mainWindow.webContents.send('setup-progress', { status: 'complete' });
+        }
+    });
 }
 
 // Single instance lock - prevent multiple hidden processes
@@ -333,7 +340,6 @@ if (!gotTheLock) {
     app.quit();
 } else {
     app.on('second-instance', () => {
-        // Someone tried to run a second instance, focus our window
         if (mainWindow) {
             if (mainWindow.isMinimized()) mainWindow.restore();
             mainWindow.focus();
@@ -341,22 +347,8 @@ if (!gotTheLock) {
         }
     });
 
-    app.whenReady().then(async () => {
-        // Create window FIRST so user sees the app launch immediately
+    app.whenReady().then(() => {
         createWindow();
-
-        // Then do async setup in background
-        try {
-            await downloadBinariesIfNeeded();
-        } catch (err) {
-            console.error('Failed to download binaries:', err);
-        }
-
-        try {
-            await checkAndInstallFFmpeg();
-        } catch (err) {
-            console.error('Failed to check/install FFmpeg:', err);
-        }
 
         app.on('activate', () => {
             if (BrowserWindow.getAllWindows().length === 0) {
@@ -372,6 +364,10 @@ app.on('window-all-closed', () => {
     }
 });
 
+ipcMain.on('start-setup', () => {
+    runSetup(mainWindow);
+});
+
 ipcMain.handle('select-directory', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
         properties: ['openDirectory']
@@ -381,20 +377,15 @@ ipcMain.handle('select-directory', async () => {
 
 ipcMain.on('download-video', (event, { url, savePath }) => {
     const isWin = process.platform === 'win32';
-    const binaryName = isWin ? 'yt-dlp.exe' : 'yt-dlp-linux';
+    const binaryName = isWin ? 'yt-dlp' : 'yt-dlp-linux';
+    const binaryPath = findBinary(binaryName);
 
-    let binaryPath = path.join(__dirname, 'bin', binaryName);
-    if (app.isPackaged) {
-        binaryPath = path.join(process.resourcesPath, 'bin', binaryName);
+    if (!binaryPath) {
+        mainWindow.webContents.send('download-error', `Engine ${binaryName} not found! Please run setup.`);
+        return;
     }
 
-    let binDir;
-    if (app.isPackaged) {
-        binDir = path.join(process.resourcesPath, 'bin');
-    } else {
-        binDir = path.join(__dirname, 'bin');
-    }
-
+    const binDir = getBinDir();
     const pathSeparator = isWin ? ';' : ':';
     const systemPaths = isWin
         ? `${process.env.PATH || ''}`
@@ -408,7 +399,7 @@ ipcMain.on('download-video', (event, { url, savePath }) => {
     };
 
     const ffmpegPath = getBinaryPath('ffmpeg');
-    const phantomjsPath = getBinaryPath('phantomjs');
+    const phantomjsPath = findBinary('phantomjs');
 
     const args = [
         '-f', 'bestvideo[height<=1080][vcodec^=avc1]+bestaudio[ext=m4a]/best[ext=mp4]/best',
@@ -425,7 +416,7 @@ ipcMain.on('download-video', (event, { url, savePath }) => {
         url
     ];
 
-    if (fs.existsSync(phantomjsPath)) {
+    if (phantomjsPath) {
         args.unshift('--js-runtime', phantomjsPath);
     }
 

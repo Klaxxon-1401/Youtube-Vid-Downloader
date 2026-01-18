@@ -1,5 +1,6 @@
 {
   "name": "youtube-downloader-electron",
+  "productName": "YTDownloader",
   "version": "1.0.0",
   "description": "A modern YouTube Video Downloader",
   "main": "main.js",
@@ -9,14 +10,14 @@
     "postinstall": "node scripts/download-binaries.js",
     "download-binaries": "node scripts/download-binaries.js"
   },
-  "author": "Devan",
+  "author": "Dvn",
   "license": "ISC",
   "devDependencies": {
     "electron": "^33.2.1",
     "electron-builder": "^25.1.8"
   },
   "build": {
-    "appId": "com.example.youtubedownloader",
+    "appId": "com.devan.ytdownloader",
     "files": [
       "src/**/*",
       "main.js",
@@ -34,10 +35,11 @@
     "linux": {
       "target": "AppImage",
       "category": "Video",
-      "executableName": "youtube-downloader"
+      "executableName": "YTDownloader"
     },
     "win": {
       "target": "nsis",
+      "executableName": "YTDownloader",
       "icon": "youtube_logo.png"
     }
   }
