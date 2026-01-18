@@ -12,8 +12,14 @@ winget install python3
 
 python -m pip install -U yt-dlp
 
-https://bitbucket.org/ariya/phantomjs/downloads/phantomjs-2.1.1-windows.zip #download,extract the files and run the exe
 ```
+In a browser
+```bash
+
+https://bitbucket.org/ariya/phantomjs/downloads/phantomjs-2.1.1-windows.zip #Paste in a browser, download,extract the files and run the exe
+
+```
+
 <p>To install these on Linux (Arch and Arch-Based).</p>
 
 
