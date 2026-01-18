@@ -26,13 +26,23 @@ function findBinary(binaryName) {
 
 function checkDependencies() {
     const ffmpeg = findBinary('ffmpeg');
+    const ytdlp = findBinary('yt-dlp') || findBinary('yt-dlp-linux');
     const phantomjs = findBinary('phantomjs');
-    const ytdlp = findBinary('yt-dlp');
 
-    if (!ffmpeg || !phantomjs || !ytdlp) {
+    console.log('Dependency Check:', {
+        ffmpeg: ffmpeg || 'MISSING',
+        ytdlp: ytdlp || 'MISSING',
+        phantomjs: phantomjs || 'OPTIONAL/MISSING'
+    });
+
+    const missing = [];
+    if (!ffmpeg) missing.push('ffmpeg');
+    if (!ytdlp) missing.push('yt-dlp');
+
+    if (missing.length > 0) {
         dialog.showErrorBox(
             "Dependency Missing",
-            "ffmpeg, yt-dlp and Phantomjs not installed , These packages are mandatory for proper function"
+            `The following required packages are not found in your system PATH: ${missing.join(', ')}\n\nThese packages are mandatory for proper function. Please install them and ensure they are added to your PATH.`
         );
         app.quit();
         return false;
