@@ -9,7 +9,7 @@
     "postinstall": "node scripts/download-binaries.js",
     "download-binaries": "node scripts/download-binaries.js"
   },
-  "author": "Antigravity",
+  "author": "Devan",
   "license": "ISC",
   "devDependencies": {
     "electron": "^33.2.1",

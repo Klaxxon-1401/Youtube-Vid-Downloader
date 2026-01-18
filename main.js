@@ -326,17 +326,45 @@ function createWindow() {
     mainWindow.loadFile('src/index.html');
 }
 
-app.whenReady().then(async () => {
-    await downloadBinariesIfNeeded();
-    await checkAndInstallFFmpeg();
-    createWindow();
+// Single instance lock - prevent multiple hidden processes
+const gotTheLock = app.requestSingleInstanceLock();
 
-    app.on('activate', () => {
-        if (BrowserWindow.getAllWindows().length === 0) {
-            createWindow();
+if (!gotTheLock) {
+    app.quit();
+} else {
+    app.on('second-instance', () => {
+        // Someone tried to run a second instance, focus our window
+        if (mainWindow) {
+            if (mainWindow.isMinimized()) mainWindow.restore();
+            mainWindow.focus();
+            mainWindow.show();
         }
     });
-});
+
+    app.whenReady().then(async () => {
+        // Create window FIRST so user sees the app launch immediately
+        createWindow();
+
+        // Then do async setup in background
+        try {
+            await downloadBinariesIfNeeded();
+        } catch (err) {
+            console.error('Failed to download binaries:', err);
+        }
+
+        try {
+            await checkAndInstallFFmpeg();
+        } catch (err) {
+            console.error('Failed to check/install FFmpeg:', err);
+        }
+
+        app.on('activate', () => {
+            if (BrowserWindow.getAllWindows().length === 0) {
+                createWindow();
+            }
+        });
+    });
+}
 
 app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') {
