@@ -8,7 +8,7 @@
 ``` bash
 winget install ffmpeg
 
-winget install Python.Python.3 --scope machine
+winget install python3
 
 python -m pip install -U yt-dlp
 
