@@ -6,7 +6,7 @@
 <p>To install these on Windows.</p>
 
 ``` bash
-winget install --id=Buanzo.FFmpeg -e
+winget install ffmpeg
 
 winget install Python.Python.3 --scope machine
 
