@@ -43,3 +43,7 @@ desktop.ini
 # Project specific
 Apk/node_modules/
 Apk/dist/
+
+# Artifacts
+*.md
+!README.md

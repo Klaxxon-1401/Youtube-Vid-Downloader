@@ -8,9 +8,29 @@ app.disableHardwareAcceleration();
 let mainWindow;
 
 // Binary resolution helpers
-// Checks if a binary exists in system PATH
+// Checks if a binary exists in bundled app or system PATH
 function findBinary(binaryName) {
     const isWin = process.platform === 'win32';
+
+    // Check bundled path first
+    if (isWin) {
+        // In packaged app, binaries are in app.asar.unpacked
+        const appPath = app.getAppPath();
+        const possiblePaths = [
+            // Packaged: resources/app.asar.unpacked/bin/win32/
+            path.join(appPath + '.unpacked', 'bin', 'win32', binaryName + '.exe'),
+            // Development: bin/win32/
+            path.join(appPath, 'bin', 'win32', binaryName + '.exe'),
+        ];
+
+        for (const binPath of possiblePaths) {
+            if (fs.existsSync(binPath)) {
+                return binPath;
+            }
+        }
+    }
+
+    // Check system PATH
     try {
         const cmd = isWin ? `where ${binaryName}` : `which ${binaryName}`;
         const stdout = execSync(cmd, { stdio: 'pipe' }).toString().trim();
@@ -26,7 +46,8 @@ function findBinary(binaryName) {
 
 function checkDependencies() {
     const ffmpeg = findBinary('ffmpeg');
-    const ytdlp = findBinary('yt-dlp') || findBinary('yt-dlp-linux');
+    const binaryName = process.platform === 'win32' ? 'downloader' : 'yt-dlp-linux';
+    const ytdlp = findBinary(binaryName);
     const phantomjs = findBinary('phantomjs');
 
     console.log('Dependency Check:', {
@@ -36,8 +57,8 @@ function checkDependencies() {
     });
 
     const missing = [];
-    if (!ffmpeg) missing.push('ffmpeg');
-    if (!ytdlp) missing.push('yt-dlp');
+    // if (!ffmpeg) missing.push('ffmpeg'); // Made optional
+    if (!ytdlp) missing.push(binaryName);
 
     if (missing.length > 0) {
         dialog.showErrorBox(
@@ -47,6 +68,16 @@ function checkDependencies() {
         app.quit();
         return false;
     }
+
+    if (!ffmpeg) {
+        dialog.showMessageBox({
+            type: 'warning',
+            title: 'Optional Dependency Missing',
+            message: 'ffmpeg was not found. Video merging and format conversion will not work, but you can still download raw formats.',
+            buttons: ['OK']
+        });
+    }
+
     return true;
 }
 
@@ -110,11 +141,11 @@ ipcMain.handle('select-directory', async () => {
 
 ipcMain.on('download-video', (event, { url, savePath }) => {
     const isWin = process.platform === 'win32';
-    const binaryName = isWin ? 'yt-dlp' : 'yt-dlp-linux';
+    const binaryName = isWin ? 'downloader' : 'yt-dlp-linux';
 
     // Check for yt-dlp specially as it might be named differently or in PATH
     let binaryPath = findBinary(binaryName);
-    if (!binaryPath && isWin) binaryPath = findBinary('yt-dlp'); // fallback
+    if (!binaryPath && isWin) binaryPath = findBinary('downloader'); // fallback
     if (!binaryPath && !isWin) binaryPath = findBinary('yt-dlp'); // fallback
 
     if (!binaryPath) {
@@ -134,7 +165,7 @@ ipcMain.on('download-video', (event, { url, savePath }) => {
     const args = [
         '-f', 'bestvideo[height<=1080][vcodec^=avc1]+bestaudio[ext=m4a]/best[ext=mp4]/best',
         '--merge-output-format', 'mp4',
-        '--ffmpeg-location', ffmpegPath,
+        // '--ffmpeg-location', ffmpegPath, // Added conditionally below
         '--write-auto-subs',
         '--write-subs',
         '--sub-langs', 'en',
@@ -145,6 +176,16 @@ ipcMain.on('download-video', (event, { url, savePath }) => {
         '-o', path.join(savePath, '%(title)s.%(ext)s'),
         url
     ];
+
+    if (ffmpegPath) {
+        args.push('--ffmpeg-location', ffmpegPath);
+    }
+
+    // Add Node.js as JavaScript runtime for yt-dlp
+    const nodePath = findBinary('node');
+    if (nodePath) {
+        args.push('--exec-before-download', `node --version`); // Verify node works
+    }
 
     if (phantomjsPath) {
         args.unshift('--js-runtime', phantomjsPath);

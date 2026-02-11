@@ -16,10 +16,14 @@
   },
   "build": {
     "appId": "com.devan.ytdownloader",
+    "asarUnpack": [
+      "bin/**/*"
+    ],
     "files": [
       "src/**/*",
       "main.js",
-      "logo.png"
+      "logo.png",
+      "bin/**/*"
     ],
     "linux": {
       "target": "AppImage",
@@ -27,9 +31,12 @@
       "executableName": "YTDownloader"
     },
     "win": {
-      "target": "nsis",
+      "target": [
+        "portable"
+      ],
       "executableName": "YTDownloader",
-      "icon": "logo.png"
+      "icon": "logo.png",
+      "sign": null
     }
   }
 }
